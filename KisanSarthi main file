@@ -1,0 +1,211 @@
+package com.kisan;
+
+import java.sql.*;
+import java.util.Scanner;
+
+public class KisanSarthi {
+
+    // Oracle JDBC URL using SID "orcl"
+    static final String URL = "jdbc:oracle:thin:@localhost:1521:orcl";
+    static final String USER = "JAVA43";
+    static final String PASSWORD = "12345";
+
+    static Scanner sc = new Scanner(System.in);
+    static int loggedInFarmerId = -1;
+
+    public static void main(String[] args) {
+        try {
+            // Load Oracle JDBC Driver
+            Class.forName("oracle.jdbc.driver.OracleDriver");
+
+            // Connect to database
+            Connection con = DriverManager.getConnection(URL, USER, PASSWORD);
+
+            int choice;
+
+            do {
+                System.out.println("\n==== KISAN SARTHI ====");
+                System.out.println("1. Register");
+                System.out.println("2. Login");
+                System.out.println("3. Exit");
+                System.out.print("Enter choice: ");
+                choice = sc.nextInt();
+                sc.nextLine();
+
+                switch (choice) {
+                    case 1:
+                        register(con);
+                        break;
+                    case 2:
+                        login(con);
+                        break;
+                    case 3:
+                        System.out.println("Thank you!");
+                        break;
+                    default:
+                        System.out.println("Invalid choice");
+                }
+
+            } while (choice != 3);
+
+            con.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    static void register(Connection con) throws SQLException {
+        System.out.print("Enter Name: ");
+        String name = sc.nextLine();
+        System.out.print("Enter Phone: ");
+        String phone = sc.nextLine();
+        System.out.print("Enter Location: ");
+        String location = sc.nextLine();
+        System.out.print("Enter Password: ");
+        String password = sc.nextLine();
+
+        String query = "INSERT INTO farmer (farmer_id, name, phone, location, password) " +
+                       "VALUES (farmer_seq.NEXTVAL, ?, ?, ?, ?)";
+
+        PreparedStatement pst = con.prepareStatement(query);
+        pst.setString(1, name);
+        pst.setString(2, phone);
+        pst.setString(3, location);
+        pst.setString(4, password);
+
+        pst.executeUpdate();
+        System.out.println("Registration Successful");
+    }
+
+    static void login(Connection con) throws SQLException {
+        System.out.print("Enter Phone: ");
+        String phone = sc.nextLine();
+        System.out.print("Enter Password: ");
+        String password = sc.nextLine();
+
+        String query = "SELECT farmer_id FROM farmer WHERE phone=? AND password=?";
+        PreparedStatement pst = con.prepareStatement(query);
+        pst.setString(1, phone);
+        pst.setString(2, password);
+
+        ResultSet rs = pst.executeQuery();
+
+        if (rs.next()) {
+            loggedInFarmerId = rs.getInt("farmer_id");
+            System.out.println("Login Successful");
+            farmerMenu(con);
+        } else {
+            System.out.println("Invalid Credentials");
+        }
+    }
+
+    static void farmerMenu(Connection con) throws SQLException {
+        int choice;
+
+        do {
+            System.out.println("\n--- Farmer Menu ---");
+            System.out.println("1. Add Crop");
+            System.out.println("2. View Crops");
+            System.out.println("3. Sell Crop");
+            System.out.println("4. Logout");
+            System.out.print("Enter choice: ");
+            choice = sc.nextInt();
+            sc.nextLine();
+
+            switch (choice) {
+                case 1:
+                    addCrop(con);
+                    break;
+                case 2:
+                    viewCrops(con);
+                    break;
+                case 3:
+                    sellCrop(con);
+                    break;
+                case 4:
+                    System.out.println("Logged out");
+                    break;
+                default:
+                    System.out.println("Invalid choice");
+            }
+
+        } while (choice != 4);
+    }
+
+    static void addCrop(Connection con) throws SQLException {
+        System.out.print("Enter Crop Name: ");
+        String name = sc.nextLine();
+        System.out.print("Enter Quantity: ");
+        int qty = sc.nextInt();
+        System.out.print("Enter Price per Kg: ");
+        double price = sc.nextDouble();
+        sc.nextLine();
+
+        String query = "INSERT INTO crop (crop_id, farmer_id, crop_name, quantity, price) " +
+                       "VALUES (crop_seq.NEXTVAL, ?, ?, ?, ?)";
+
+        PreparedStatement pst = con.prepareStatement(query);
+        pst.setInt(1, loggedInFarmerId);
+        pst.setString(2, name);
+        pst.setInt(3, qty);
+        pst.setDouble(4, price);
+
+        pst.executeUpdate();
+        System.out.println("Crop Added Successfully");
+    }
+
+    static void viewCrops(Connection con) throws SQLException {
+        String query = "SELECT * FROM crop WHERE farmer_id=?";
+        PreparedStatement pst = con.prepareStatement(query);
+        pst.setInt(1, loggedInFarmerId);
+        ResultSet rs = pst.executeQuery();
+
+        System.out.println("\nYour Crops:");
+        while (rs.next()) {
+            System.out.println("ID: " + rs.getInt("crop_id") +
+                    " | Name: " + rs.getString("crop_name") +
+                    " | Qty: " + rs.getInt("quantity") +
+                    " | Price: " + rs.getDouble("price"));
+        }
+    }
+
+    static void sellCrop(Connection con) throws SQLException {
+        viewCrops(con);
+        System.out.print("Enter Crop ID to Sell: ");
+        int cropId = sc.nextInt();
+        System.out.print("Enter Quantity to Sell: ");
+        int sellQty = sc.nextInt();
+        sc.nextLine();
+
+        String checkQuery = "SELECT quantity, price FROM crop WHERE crop_id=? AND farmer_id=?";
+        PreparedStatement pst = con.prepareStatement(checkQuery);
+        pst.setInt(1, cropId);
+        pst.setInt(2, loggedInFarmerId);
+
+        ResultSet rs = pst.executeQuery();
+
+        if (rs.next()) {
+            int available = rs.getInt("quantity");
+            double price = rs.getDouble("price");
+
+            if (sellQty <= available) {
+                int newQty = available - sellQty;
+                double total = sellQty * price;
+
+                String updateQuery = "UPDATE crop SET quantity=? WHERE crop_id=?";
+                PreparedStatement update = con.prepareStatement(updateQuery);
+                update.setInt(1, newQty);
+                update.setInt(2, cropId);
+                update.executeUpdate();
+
+                System.out.println("Sale Successful");
+                System.out.println("Total Amount: " + total);
+            } else {
+                System.out.println("Not enough stock");
+            }
+        } else {
+            System.out.println("Invalid Crop ID");
+        }
+    }
+}
